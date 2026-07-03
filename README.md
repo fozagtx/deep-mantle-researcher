@@ -1,204 +1,139 @@
-# Branium.
+# Deep Mantle Researcher
 
-Branium is an on-chain claim market on Mantle. A user creates a claim, stakes MNT on one side, and other wallets or panel agents can challenge the other side. When the deadline passes, the oracle agent checks the agreed evidence source, writes the verdict to the contract, and the contract pays the winning side.
+An AI agent skill for Mantle and onchain finance researchers who need to turn a messy RWA, DeFi, tokenized asset, or market-structure question into a source-backed article, memo, X thread, or hackathon research submission.
 
-The app does not use IndexedDB or browser storage as a source of truth for markets. Market state comes from the Branium smart contract. When a wallet creates a claim, the UI reads the emitted `ClaimCreated` event to get the real claim ID, then asks the server to index that exact on-chain claim.
+This skill is designed for research work where being early is not enough. It forces decomposition, source-category assignment, triangulation, confidence scoring, counterargument handling, and article-ready synthesis.
 
-Live app: [brainium-rho.vercel.app](https://brainium-rho.vercel.app)
+## What It Helps With
 
-## How It Works
+| Area | Outcome |
+|---|---|
+| Research decomposition | Turn a messy onchain question into 5-8 answerable sub-questions |
+| Source mapping | Assign primary docs, market data, regulator sources, reporting, and user/community signal |
+| Evidence integrity | Separate reported facts, inferred claims, interested-party claims, and unresolved gaps |
+| RWA market analysis | Compare tokenized equities, RWAs, stablecoins, DeFi liquidity, execution, and distribution |
+| Mantle-specific research | Analyze Mantle, xStocks, Bybit, Fluxion, Merchant Moe, InsightX, ERC-8004, and x402 |
+| Article synthesis | Convert findings into a thesis, outline, caveats, and "what would change my mind" section |
+| Hackathon workflow | Produce a live research-agent demo showing the research method working on a real prompt |
 
-```mermaid
-flowchart TD
-  User["User wallet"] -->|createClaim + MNT stake| Contract["Branium.sol on Mantle"]
-  Contract -->|ClaimCreated event| UI["Next.js app"]
-  UI -->|sync exact claim id| API["/api/vs/sync"]
-  API -->|read claim from contract| Contract
-  API --> Feed["Arena, Dashboard, Details"]
+## What Makes This Different
 
-  PanelCron["Vercel cron: panels"] --> Panels["Panel agents"]
-  Panels -->|challengeClaim + MNT stake| Contract
+- It is evidence-first. It does not let a market narrative become a claim until the source category and confidence level are explicit.
+- It is designed for onchain finance, where protocol announcements, dashboards, token mechanics, legal status, and liquidity data often disagree.
+- It is progressive and token-efficient. `skill/SKILL.md` routes to focused files only when needed.
+- It is safe to install. The scripts only copy local Markdown files into a selected skills directory.
+- It is submission-ready. The repo includes agents, commands, rules, validation, and a demo prompt for the Mantle Research Challenge.
 
-  CreatorCron["Vercel cron: market creator"] --> Creator["Market creator agent"]
-  Creator -->|createClaim + MNT stake| Contract
+## Installation
 
-  OracleCron["Vercel cron: oracle"] --> Oracle["Oracle agent"]
-  Oracle -->|fetch evidence + evaluate claim| Evidence["Resolution source"]
-  Oracle -->|resolveClaim verdict| Contract
-  Contract -->|native MNT payout| Winners["Winning side"]
-```
-
-## Market Lifecycle
-
-```mermaid
-stateDiagram-v2
-  [*] --> Open: creator stakes MNT
-  Open --> Active: challenger or panel stakes MNT
-  Open --> Cancelled: creator cancels before challenge
-  Active --> Resolved: oracle resolves after deadline
-  Resolved --> [*]: contract pays winners
-  Cancelled --> [*]: contract refunds creator
-```
-
-## Main Pieces
-
-- `contracts/Branium.sol` holds claim state, MNT stakes, challengers, verdicts, and payouts.
-- `app/vs/create/page.tsx` creates markets from the connected wallet.
-- `lib/contract.ts` wraps contract reads and writes with viem/wagmi.
-- `lib/server/vs-index.ts` serves the market feed from the contract, with an optional database index when `DATABASE_URL` exists.
-- `agents/market-creator` creates source-backed markets on a schedule.
-- `agents/panels` runs the panel signers that stake on claims.
-- `agents/oracle` settles expired claims by checking the claim evidence source and calling `resolveClaim`.
-- `app/api/cron/*` exposes Vercel-protected cron endpoints.
-
-## Runtime Flow
-
-```mermaid
-sequenceDiagram
-  participant Wallet
-  participant App as Next.js App
-  participant API as Server API
-  participant Chain as Branium Contract
-  participant Agents as Scheduled Agents
-
-  Wallet->>Chain: createClaim(value: MNT)
-  Chain-->>Wallet: tx receipt with ClaimCreated(id)
-  Wallet->>App: return tx hash + claim id
-  App->>API: POST /api/vs/sync { claimId }
-  API->>Chain: getClaim(claimId)
-  API-->>App: indexed or contract fallback
-  App->>API: GET /api/vs?refresh=1
-  API->>Chain: read recent real claims
-  API-->>App: Arena feed
-  Agents->>Chain: challengeClaim or resolveClaim
-  Chain-->>Agents: tx receipt
-```
-
-## Data Truth
-
-The contract is the source of truth.
-
-- No market state is trusted from IndexedDB.
-- No pending market cache is trusted from `localStorage`.
-- The feed uses real contract reads when no database index is configured.
-- `DATABASE_URL` is optional and only speeds up indexed reads. It does not replace the contract.
-- `CRON_SECRET` protects scheduled endpoints from public execution.
-
-## Agents And Cron
-
-Vercel runs these daily schedules from `vercel.json`:
-
-| Route | Schedule | Job |
-| --- | --- | --- |
-| `/api/cron/oracle` | `5 0 * * *` | Settles expired claims when conditions are ready. |
-| `/api/cron/market-creator` | `15 0 * * *` | Creates a capped number of source-backed markets. |
-| `/api/cron/panels` | `25 0 * * *` | Lets configured panel signers evaluate and stake. |
-| `/api/cron/sync` | `35 0 * * *` | Warms the optional server index when a database exists. |
-
-The cron routes require:
-
-```txt
-Authorization: Bearer <CRON_SECRET>
-```
-
-## Environment
-
-Create `.env.local` from `.env.example`.
-
-Required for the app:
-
-```txt
-NEXT_PUBLIC_CONTRACT_ADDRESS=0x...
-NEXT_PUBLIC_MANTLE_RPC=https://rpc.sepolia.mantle.xyz
-MANTLE_RPC=https://rpc.sepolia.mantle.xyz
-```
-
-Required for scheduled agents:
-
-```txt
-ORACLE_PRIVATE_KEY=0x...
-MARKET_CREATOR_PRIVATE_KEY=0x...
-PANEL_MOMENTUM_PRIVATE_KEY=0x...
-PANEL_RISK_PRIVATE_KEY=0x...
-PANEL_CONTRARIAN_PRIVATE_KEY=0x...
-PANEL_SIGNAL_PRIVATE_KEY=0x...
-PANEL_LIQUIDITY_PRIVATE_KEY=0x...
-PANEL_TOKEN_PRIVATE_KEY=0x...
-PANEL_MATCH_PRIVATE_KEY=0x...
-PANEL_WEATHER_PRIVATE_KEY=0x...
-PANEL_STRESS_PRIVATE_KEY=0x...
-PANEL_PULSE_PRIVATE_KEY=0x...
-OPENROUTER_API_KEY=sk-or-...
-OPENROUTER_MODEL=google/gemini-2.5-flash
-CRON_SECRET=...
-```
-
-Optional:
-
-```txt
-DATABASE_URL=postgresql://...
-NEXT_PUBLIC_WC_PROJECT_ID=...
-```
-
-## Local Development
+### Recommended
 
 ```bash
-npm install
-npm run dev
+git clone https://github.com/fozagtx/deep-mantle-researcher.git
+cd deep-mantle-researcher
+./install-custom.sh
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+The custom installer lets you choose personal or project skill locations, including `.agents/skills`, `.claude/skills`, and a local project `skills/` folder.
 
-Useful checks:
+### Standard
 
 ```bash
-npx tsc --noEmit
-npm run test:smoke
-npm run build
+./install.sh
+./install.sh -y
 ```
 
-Run agents locally only when the signer keys are funded and you want real Mantle transactions:
+Standard defaults:
+
+- Skill location: `~/.agents/skills/deep-mantle-researcher`
+- Optional config copied to: `~/.agents/AGENTS.md`
+
+## Usage Examples
+
+```text
+Research whether Mantle's tokenized-equity push is mostly issuance, or whether distribution and execution are the real shift.
+```
+
+```text
+Turn this RWA announcement into a defensible article thesis with sources, caveats, and a findings grid.
+```
+
+```text
+Compare xStocks, Ondo, Robinhood stock tokens, and Dinari. Where is the real market-structure difference?
+```
+
+```text
+Build me a research-agent demo for a hackathon submission using ERC-8004, x402, and Mantle's RWA stack as the live example.
+```
+
+## Repository Structure
+
+```text
+deep-mantle-researcher/
+|-- .gitignore
+|-- ARTICLE.md
+|-- README.md
+|-- LICENSE
+|-- CLAUDE.md
+|-- SUBMISSION.md
+|-- install.sh
+|-- install-custom.sh
+|-- skill/
+|   |-- SKILL.md
+|   |-- research-workflow.md
+|   |-- source-map.md
+|   |-- evidence-grid.md
+|   |-- article-synthesis.md
+|   |-- hackathon-submission.md
+|   `-- resources.md
+|-- agents/
+|   |-- research-analyst.md
+|   |-- source-verifier.md
+|   |-- article-synthesizer.md
+|   `-- skill-demo-coach.md
+|-- commands/
+|   |-- research-sprint.md
+|   |-- verify-claim.md
+|   |-- article-brief.md
+|   `-- skill-demo.md
+|-- rules/
+|   `-- evidence-integrity.md
+`-- tests/
+    `-- validate_structure.sh
+```
+
+## Skill Routing
+
+`skill/SKILL.md` is the entry point. It classifies the task and routes to the smallest relevant module:
+
+- `research-workflow.md` for intake, decomposition, triangulation, and synthesis
+- `source-map.md` for source categories, source-quality checks, and search planning
+- `evidence-grid.md` for confidence scoring and contradiction handling
+- `article-synthesis.md` for article outlines, thesis writing, and X-ready framing
+- `hackathon-submission.md` for Track 1/Track 2 packaging and demo scripts
+- `resources.md` for source-of-truth links and the Mantle live example
+
+## Quality Bar
+
+The skill should make an agent:
+
+- Preserve the messy original question before cleaning it up
+- Use at least three source categories for non-trivial research
+- Triangulate the highest-stakes claim before recommending a thesis
+- Label interested-party claims instead of laundering them as neutral facts
+- Include caveats, contradictions, and "what would change my mind"
+- Produce outputs that can become an article, memo, thread, or research-agent demo
+
+## Validation
+
+Run the structure validator:
 
 ```bash
-npm run oracle
-npm run market-creator
-npm run panels
+./tests/validate_structure.sh
 ```
 
-## Contract Deployment
+It checks required files, frontmatter, relative skill links, shell syntax, and attribution hygiene.
 
-Compile:
+## License
 
-```bash
-npm run compile:contract
-```
-
-Deploy:
-
-```bash
-DEPLOYER_PRIVATE_KEY=0x... ORACLE_ADDRESS=0x... npm run deploy:contract
-```
-
-After deploying, set:
-
-```txt
-NEXT_PUBLIC_CONTRACT_ADDRESS=<deployed contract>
-NEXT_PUBLIC_DEPLOY_BLOCK=<deployment block>
-```
-
-## Production Deploy
-
-The app is deployed on Vercel.
-
-```bash
-npx vercel deploy --prod
-```
-
-After deployment, verify:
-
-```bash
-curl https://brainium-rho.vercel.app/api/vs?refresh=1
-curl https://brainium-rho.vercel.app/api/vs/1
-```
-
-Those responses should return real contract-backed claims, not placeholder data.
+MIT. See [LICENSE](LICENSE).
